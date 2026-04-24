@@ -142,7 +142,7 @@ export class GameScene {
 
   update(dt) {
     this.elapsed += dt;
-    this.environment.update(dt, this.state);
+    this.environment.update(dt, this.state, this.player.group.position);
     this.player.update(
       dt,
       this.keys,
@@ -183,8 +183,8 @@ export class GameScene {
     const now = performance.now();
     const tapPosition = new THREE.Vector2(event.clientX, event.clientY);
     const isDoubleTap =
-      now - this.lastTapTime < 320 &&
-      tapPosition.distanceTo(this.lastTapPosition) < 34;
+      now - this.lastTapTime < 460 &&
+      tapPosition.distanceTo(this.lastTapPosition) < 58;
 
     this.updateMouse(event);
     if (isDoubleTap) {
@@ -241,14 +241,34 @@ export class GameScene {
     });
     const hits = this.raycaster.intersectObjects(targetObjects, false);
     const hit = hits.find((entry) => entry.object.type !== "Group");
-    if (!hit) return null;
-    return this.targets.find((target) => {
+    if (hit) return this.targets.find((target) => {
       let matched = false;
       target.group.traverse((child) => {
         if (child === hit.object) matched = true;
       });
       return matched;
     });
+
+    // Mobile taps are imprecise, so a near miss on screen should still lock
+    // onto the closest visible inflammatory target.
+    const tap = new THREE.Vector2(event.clientX, event.clientY);
+    let nearest = null;
+    let nearestDistance = 76;
+    for (const target of this.targets) {
+      if (target.captured || target.destroyed) continue;
+      const screenPosition = target.group.position.clone().project(this.camera);
+      if (screenPosition.z < -1 || screenPosition.z > 1) continue;
+      const targetPixel = new THREE.Vector2(
+        ((screenPosition.x + 1) / 2) * window.innerWidth,
+        ((-screenPosition.y + 1) / 2) * window.innerHeight,
+      );
+      const distance = targetPixel.distanceTo(tap);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = target;
+      }
+    }
+    return nearest;
   }
 
   updateCamera(dt) {
