@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RA Synovium NET Shooter</title>
+    <style>
+      html,
+      body,
+      #app {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #140817;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      canvas {
+        display: block;
+      }
+
+      .hud {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        color: #fff7fb;
+      }
+
+      .top-panel {
+        position: absolute;
+        top: 16px;
+        left: 16px;
+        width: min(420px, calc(100vw - 32px));
+        padding: 14px;
+        background: rgba(20, 8, 23, 0.68);
+        border: 1px solid rgba(255, 210, 235, 0.2);
+        border-radius: 8px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+      }
+
+      .legend-panel {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+        width: min(290px, calc(100vw - 32px));
+        padding: 14px;
+        background: rgba(20, 8, 23, 0.68);
+        border: 1px solid rgba(255, 210, 235, 0.2);
+        border-radius: 8px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+      }
+
+      .legend-title {
+        margin-bottom: 10px;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .legend-item {
+        display: grid;
+        grid-template-columns: 16px 1fr;
+        gap: 9px;
+        align-items: start;
+        margin: 9px 0;
+      }
+
+      .legend-swatch {
+        width: 12px;
+        height: 12px;
+        margin-top: 3px;
+        border: 1px solid rgba(255, 255, 255, 0.55);
+        box-shadow: 0 0 12px currentColor;
+      }
+
+      .legend-swatch.round {
+        border-radius: 999px;
+      }
+
+      .legend-swatch.diamond {
+        transform: rotate(45deg);
+      }
+
+      .legend-swatch.disc {
+        height: 8px;
+        margin-top: 5px;
+        border-radius: 999px;
+      }
+
+      .legend-name {
+        display: block;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .legend-note {
+        display: block;
+        margin-top: 1px;
+        color: #f4c6da;
+        font-size: 11px;
+        line-height: 1.3;
+      }
+
+      .title-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        margin-bottom: 10px;
+      }
+
+      .game-title {
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .wave-label {
+        font-size: 13px;
+        color: #ffd6ec;
+      }
+
+      .meter {
+        display: grid;
+        grid-template-columns: 132px 1fr 42px;
+        align-items: center;
+        gap: 10px;
+        margin: 8px 0;
+        font-size: 12px;
+      }
+
+      .bar {
+        height: 10px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.13);
+      }
+
+      .fill {
+        height: 100%;
+        width: 0%;
+        border-radius: inherit;
+        transition: width 130ms linear;
+      }
+
+      .health {
+        background: linear-gradient(90deg, #d7f7ff, #ffffff);
+      }
+
+      .inflammation {
+        background: linear-gradient(90deg, #ff87b0, #ff2f7d);
+      }
+
+      .net {
+        background: linear-gradient(90deg, #d7c8ff, #8ef5ff);
+      }
+
+      .score-row,
+      .hint-row {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 10px;
+        font-size: 12px;
+        color: #f4c6da;
+      }
+
+      .center-message {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: min(560px, calc(100vw - 32px));
+        transform: translate(-50%, -50%);
+        padding: 22px;
+        text-align: center;
+        background: rgba(28, 9, 30, 0.82);
+        border: 1px solid rgba(255, 220, 240, 0.24);
+        border-radius: 8px;
+        box-shadow: 0 20px 80px rgba(0, 0, 0, 0.4);
+      }
+
+      .center-message h1 {
+        margin: 0 0 10px;
+        font-size: clamp(26px, 6vw, 48px);
+        letter-spacing: 0;
+      }
+
+      .center-message p {
+        margin: 8px 0;
+        color: #ffe0ef;
+        line-height: 1.45;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      @media (max-width: 560px) {
+        .top-panel {
+          top: 10px;
+          left: 10px;
+          width: calc(100vw - 20px);
+          box-sizing: border-box;
+        }
+
+        .meter {
+          grid-template-columns: 112px 1fr 36px;
+        }
+
+        .legend-panel {
+          top: auto;
+          right: 10px;
+          bottom: 10px;
+          width: calc(100vw - 20px);
+          box-sizing: border-box;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          column-gap: 12px;
+        }
+
+        .legend-title {
+          grid-column: 1 / -1;
+        }
+
+        .legend-item {
+          margin: 5px 0;
+        }
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-GOdIK-NR.js"></script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div class="hud">
+      <div class="top-panel">
+        <div class="title-row">
+          <div class="game-title">RA Synovium NET Shooter</div>
+          <div id="waveLabel" class="wave-label">Wave 1</div>
+        </div>
+        <div class="meter">
+          <span>Neutrophil health</span>
+          <div class="bar"><div id="healthBar" class="fill health"></div></div>
+          <span id="healthValue">100</span>
+        </div>
+        <div class="meter">
+          <span>Inflammation</span>
+          <div class="bar"><div id="inflammationBar" class="fill inflammation"></div></div>
+          <span id="inflammationValue">25</span>
+        </div>
+        <div class="meter">
+          <span>NET tissue damage</span>
+          <div class="bar"><div id="netBar" class="fill net"></div></div>
+          <span id="netValue">0</span>
+        </div>
+        <div class="score-row">
+          <span id="clearedValue">Cleared: 0</span>
+          <span id="timeValue">Stabilise: 02:30</span>
+        </div>
+        <div class="hint-row">
+          <span>WASD / arrows move</span>
+          <span>Mouse or Space fires NETs</span>
+        </div>
+      </div>
+      <div class="legend-panel">
+        <div class="legend-title">NET Targets</div>
+        <div class="legend-item">
+          <span class="legend-swatch diamond" style="color:#ffd8f4;background:#ffd8f4"></span>
+          <span><span class="legend-name">Immune complexes</span><span class="legend-note">Glowing antibody-antigen clusters</span></span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch disc" style="color:#f3b04d;background:#f3b04d"></span>
+          <span><span class="legend-name">Platelets / microthrombi</span><span class="legend-note">Orange discs, raise NET burden</span></span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch diamond" style="color:#ffc63a;background:#ffc63a"></span>
+          <span><span class="legend-name">Citrullinated debris</span><span class="legend-note">Yellow autoantigen fragments</span></span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch round" style="color:#ff4d9a;background:#ff4d9a"></span>
+          <span><span class="legend-name">Cytokine clouds</span><span class="legend-note">Pink TNF / IL-6 / IL-1 signals</span></span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch disc" style="color:#b555b7;background:#b555b7"></span>
+          <span><span class="legend-name">Invasive synoviocytes</span><span class="legend-note">Purple crawling stromal cells</span></span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-swatch round" style="color:#9dfbff;background:#9dfbff"></span>
+          <span><span class="legend-name">Complement bursts</span><span class="legend-note">Cyan hazards that damage health</span></span>
+        </div>
+      </div>
+      <div id="message" class="center-message hidden"></div>
+    </div>
+  </body>
+</html>
