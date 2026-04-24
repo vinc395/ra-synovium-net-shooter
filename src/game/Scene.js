@@ -180,23 +180,16 @@ export class GameScene {
     }
 
     event.preventDefault();
-    const now = performance.now();
-    const tapPosition = new THREE.Vector2(event.clientX, event.clientY);
-    const isDoubleTap =
-      now - this.lastTapTime < 460 &&
-      tapPosition.distanceTo(this.lastTapPosition) < 58;
-
     this.updateMouse(event);
-    if (isDoubleTap) {
-      this.fireAtTappedTarget(event);
+
+    // On mobile, target taps should be direct: one tap fires a NET, while
+    // pressing empty tissue begins drag-to-move.
+    if (this.fireAtTappedTarget(event)) {
       this.draggingPlayer = false;
     } else {
       this.draggingPlayer = true;
       this.player.setMobileMoveTarget(this.aimPoint);
     }
-
-    this.lastTapTime = now;
-    this.lastTapPosition.copy(tapPosition);
   }
 
   onPointerMove(event) {
@@ -223,9 +216,10 @@ export class GameScene {
 
   fireAtTappedTarget(event) {
     const target = this.findTappedTarget(event);
-    if (!target) return;
+    if (!target) return false;
     this.aimPoint.copy(target.group.position);
     this.fireNET();
+    return true;
   }
 
   findTappedTarget(event) {
@@ -253,7 +247,7 @@ export class GameScene {
     // onto the closest visible inflammatory target.
     const tap = new THREE.Vector2(event.clientX, event.clientY);
     let nearest = null;
-    let nearestDistance = 76;
+    let nearestDistance = 96;
     for (const target of this.targets) {
       if (target.captured || target.destroyed) continue;
       const screenPosition = target.group.position.clone().project(this.camera);
