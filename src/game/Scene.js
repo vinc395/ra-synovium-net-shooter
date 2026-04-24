@@ -38,6 +38,10 @@ export class GameScene {
     this.mouse = new THREE.Vector2(0, 0);
     this.aimPoint = new THREE.Vector3(0, 0, -8);
     this.floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    this.isMobileControl = this.detectMobileControl();
+    this.draggingPlayer = false;
+    this.lastTapTime = 0;
+    this.lastTapPosition = new THREE.Vector2();
 
     this.keys = new Set();
     this.projectiles = [];
@@ -96,8 +100,10 @@ export class GameScene {
     window.addEventListener("keyup", (event) => {
       this.keys.delete(event.key.toLowerCase());
     });
-    window.addEventListener("pointermove", (event) => this.updateMouse(event));
-    window.addEventListener("pointerdown", () => this.fireNET());
+    window.addEventListener("pointermove", (event) => this.onPointerMove(event));
+    window.addEventListener("pointerdown", (event) => this.onPointerDown(event));
+    window.addEventListener("pointerup", () => this.onPointerUp());
+    window.addEventListener("pointercancel", () => this.onPointerUp());
   }
 
   start() {
@@ -157,11 +163,92 @@ export class GameScene {
     this.checkEndConditions();
   }
 
+  detectMobileControl() {
+    return window.matchMedia("(pointer: coarse)").matches || window.innerWidth <= 760;
+  }
+
+  onPointerDown(event) {
+    if (this.gameOver && !this.pendingEnd) {
+      this.restart();
+      return;
+    }
+
+    if (!this.isMobileControl) {
+      this.updateMouse(event);
+      this.fireNET();
+      return;
+    }
+
+    event.preventDefault();
+    const now = performance.now();
+    const tapPosition = new THREE.Vector2(event.clientX, event.clientY);
+    const isDoubleTap =
+      now - this.lastTapTime < 320 &&
+      tapPosition.distanceTo(this.lastTapPosition) < 34;
+
+    this.updateMouse(event);
+    if (isDoubleTap) {
+      this.fireAtTappedTarget(event);
+      this.draggingPlayer = false;
+    } else {
+      this.draggingPlayer = true;
+      this.player.setMobileMoveTarget(this.aimPoint);
+    }
+
+    this.lastTapTime = now;
+    this.lastTapPosition.copy(tapPosition);
+  }
+
+  onPointerMove(event) {
+    this.updateMouse(event);
+    if (this.isMobileControl && this.draggingPlayer && !this.gameOver) {
+      event.preventDefault();
+      this.player.setMobileMoveTarget(this.aimPoint);
+    }
+  }
+
+  onPointerUp() {
+    this.draggingPlayer = false;
+    if (this.isMobileControl) {
+      this.player.clearMobileMoveTarget();
+    }
+  }
+
   updateMouse(event) {
     this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
     this.raycaster.setFromCamera(this.mouse, this.camera);
     this.raycaster.ray.intersectPlane(this.floorPlane, this.aimPoint);
+  }
+
+  fireAtTappedTarget(event) {
+    const target = this.findTappedTarget(event);
+    if (!target) return;
+    this.aimPoint.copy(target.group.position);
+    this.fireNET();
+  }
+
+  findTappedTarget(event) {
+    this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+    const targetObjects = this.targets.flatMap((target) => {
+      const objects = [];
+      target.group.traverse((child) => {
+        if (child.isMesh || child.isLine) objects.push(child);
+      });
+      return objects;
+    });
+    const hits = this.raycaster.intersectObjects(targetObjects, false);
+    const hit = hits.find((entry) => entry.object.type !== "Group");
+    if (!hit) return null;
+    return this.targets.find((target) => {
+      let matched = false;
+      target.group.traverse((child) => {
+        if (child === hit.object) matched = true;
+      });
+      return matched;
+    });
   }
 
   updateCamera(dt) {
@@ -333,6 +420,7 @@ export class GameScene {
   }
 
   onResize() {
+    this.isMobileControl = this.detectMobileControl();
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);

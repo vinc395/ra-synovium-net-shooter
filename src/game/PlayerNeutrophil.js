@@ -13,6 +13,7 @@ export class PlayerNeutrophil {
     this.deathDuration = 1.35;
     this.dying = false;
     this.deathFragments = [];
+    this.mobileMoveTarget = null;
     this.createBody();
   }
 
@@ -175,6 +176,15 @@ export class PlayerNeutrophil {
     if (keys.has("a") || keys.has("arrowleft")) input.x -= 1;
     if (keys.has("d") || keys.has("arrowright")) input.x += 1;
 
+    if (this.mobileMoveTarget) {
+      const toTarget = this.mobileMoveTarget.clone().sub(this.group.position);
+      toTarget.y = 0;
+      if (toTarget.length() > 0.8) {
+        toTarget.normalize();
+        input.copy(toTarget);
+      }
+    }
+
     if (input.lengthSq() > 0) {
       input.normalize();
       this.lastMove.copy(input);
@@ -208,6 +218,14 @@ export class PlayerNeutrophil {
 
   markFired() {
     this.cooldown = 0.22;
+  }
+
+  setMobileMoveTarget(point) {
+    this.mobileMoveTarget = point.clone();
+  }
+
+  clearMobileMoveTarget() {
+    this.mobileMoveTarget = null;
   }
 
   beginDeathBurst() {
