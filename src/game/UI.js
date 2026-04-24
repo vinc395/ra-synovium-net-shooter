@@ -39,7 +39,7 @@ export class UI {
     this.message.innerHTML = `
       <h1>RA Synovium NET Shooter</h1>
       <p>Guide an activated neutrophil through inflamed synovial tissue. Trap cytokines, immune complexes, complement bursts, debris, platelets, and invasive synoviocytes with NET-like chromatin webs.</p>
-      <p>Balance suppression of inflammation against NET-mediated tissue damage. Click or press R to begin.</p>
+      <p>Balance suppression of inflammation against NET-mediated tissue damage. Tap or click once to begin.</p>
     `;
     const start = () => {
       window.removeEventListener("pointerdown", start);
@@ -59,7 +59,7 @@ export class UI {
       <h1>${title}</h1>
       <p>${text}</p>
       <p>Inflammatory targets cleared: ${cleared}</p>
-      <p>Press R to restart.</p>
+      <p>Press R or tap to restart.</p>
     `;
   }
 
