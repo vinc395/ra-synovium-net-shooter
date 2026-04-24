@@ -17,6 +17,7 @@ export class Environment {
     this.group = new THREE.Group();
     this.cytokines = [];
     this.hypoxicPatches = [];
+    this.cameraSideWall = null;
     scene.add(this.group);
     this.createSynovialFloor();
     this.createSynovialBackdrop();
@@ -83,19 +84,26 @@ export class Environment {
     };
 
     const walls = [
-      { position: [0, 11, -35], rotation: [0, 0, 0], phase: 0 },
-      { position: [0, 11, 35], rotation: [0, Math.PI, 0], phase: 1.8 },
-      { position: [-35, 11, 0], rotation: [0, Math.PI / 2, 0], phase: 3.2 },
-      { position: [35, 11, 0], rotation: [0, -Math.PI / 2, 0], phase: 4.7 },
+      { position: [0, 11, -35], rotation: [0, 0, 0], phase: 0, cameraSide: false },
+      { position: [0, 11, 35], rotation: [0, Math.PI, 0], phase: 1.8, cameraSide: true },
+      { position: [-35, 11, 0], rotation: [0, Math.PI / 2, 0], phase: 3.2, cameraSide: false },
+      { position: [35, 11, 0], rotation: [0, -Math.PI / 2, 0], phase: 4.7, cameraSide: false },
     ];
 
     for (const wallConfig of walls) {
       const geometry = wallGeometry.clone();
       deformWall(geometry, wallConfig.phase);
-      const wall = new THREE.Mesh(geometry, wallMaterial);
+      const material = wallMaterial.clone();
+      if (wallConfig.cameraSide) {
+        material.transparent = true;
+        material.opacity = 0.82;
+        material.depthWrite = false;
+      }
+      const wall = new THREE.Mesh(geometry, material);
       wall.position.set(...wallConfig.position);
       wall.rotation.set(...wallConfig.rotation);
       wall.receiveShadow = true;
+      if (wallConfig.cameraSide) this.cameraSideWall = wall;
       this.group.add(wall);
     }
 
@@ -302,7 +310,7 @@ export class Environment {
     }
   }
 
-  update(dt, state) {
+  update(dt, state, playerPosition = new THREE.Vector3()) {
     for (const [index, cloud] of this.cytokines.entries()) {
       cloud.rotation.x += dt * (0.25 + index * 0.01);
       cloud.rotation.y += dt * 0.4;
@@ -317,5 +325,13 @@ export class Environment {
 
     const mixed = tissuePink.clone().lerp(tissuePurple, state.netBurden / 150);
     this.scene.fog.color.lerp(mixed, dt * 0.25);
+
+    if (this.cameraSideWall) {
+      // The camera follows from the positive-Z side. Fade that synovial wall
+      // as the neutrophil crawls toward the bottom edge so the tissue still
+      // feels enclosed without hiding the player.
+      const fade = THREE.MathUtils.smoothstep(playerPosition.z, 16, 30);
+      this.cameraSideWall.material.opacity = THREE.MathUtils.lerp(0.82, 0.18, fade);
+    }
   }
 }
