@@ -330,8 +330,8 @@ export class Environment {
       // The camera follows from the positive-Z side. Fade that synovial wall
       // as the neutrophil crawls toward the bottom edge so the tissue still
       // feels enclosed without hiding the player.
-      const fade = THREE.MathUtils.smoothstep(playerPosition.z, 16, 30);
-      this.cameraSideWall.material.opacity = THREE.MathUtils.lerp(0.82, 0.18, fade);
+      const fade = THREE.MathUtils.smoothstep(playerPosition.z, 8, 27);
+      this.cameraSideWall.material.opacity = THREE.MathUtils.lerp(0.62, 0.04, fade);
     }
   }
 }
