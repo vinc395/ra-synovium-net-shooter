@@ -199,6 +199,34 @@
         line-height: 1.45;
       }
 
+      .control-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 14px;
+        text-align: left;
+      }
+
+      .control-block {
+        padding: 10px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 8px;
+      }
+
+      .control-block strong {
+        display: block;
+        margin-bottom: 5px;
+        font-size: 12px;
+      }
+
+      .control-block span {
+        display: block;
+        color: #ffe0ef;
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
       .hidden {
         display: none;
       }
@@ -290,6 +318,33 @@
 
         .legend-note {
           display: none;
+        }
+
+        .center-message {
+          padding: 16px;
+        }
+
+        .center-message h1 {
+          font-size: 28px;
+        }
+
+        .center-message p {
+          font-size: 13px;
+        }
+
+        .control-grid {
+          grid-template-columns: 1fr;
+          gap: 7px;
+          margin-top: 10px;
+        }
+
+        .control-block {
+          padding: 8px;
+        }
+
+        .control-block strong,
+        .control-block span {
+          font-size: 11px;
         }
       }
     </style>
