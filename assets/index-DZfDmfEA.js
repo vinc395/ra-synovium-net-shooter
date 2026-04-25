@@ -3826,6 +3826,20 @@ void main() {
       <h1>RA Synovium NET Shooter</h1>
       <p>Guide an activated neutrophil through inflamed synovial tissue. Trap cytokines, immune complexes, complement bursts, debris, platelets, and invasive synoviocytes with NET-like chromatin webs.</p>
       <p>Balance suppression of inflammation against NET-mediated tissue damage. Tap or click once to begin.</p>
+      <div class="control-grid">
+        <div class="control-block">
+          <strong>Desktop browser</strong>
+          <span>Move with WASD or arrow keys.</span>
+          <span>Aim with the mouse.</span>
+          <span>Click or press Space to shoot NETs.</span>
+        </div>
+        <div class="control-block">
+          <strong>Mobile browser</strong>
+          <span>Tap once to start.</span>
+          <span>Drag on empty tissue to move.</span>
+          <span>Tap a target once to shoot a NET.</span>
+        </div>
+      </div>
     `;const e=()=>{window.removeEventListener("pointerdown",e),window.removeEventListener("keydown",n),t()},n=r=>{(r.key.toLowerCase()==="r"||r.code==="Space")&&e()};window.addEventListener("pointerdown",e),window.addEventListener("keydown",n)}showEnd(t,e,n){this.message.classList.remove("hidden"),this.message.innerHTML=`
       <h1>${t}</h1>
       <p>${e}</p>
