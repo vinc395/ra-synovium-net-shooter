@@ -33,6 +33,7 @@ const tmpVec = new THREE.Vector3();
 const tmpVec2 = new THREE.Vector3();
 const tmpNdc = new THREE.Vector2();
 const tmpScreen = { x: 0, y: 0, visible: false };
+const NO_TARGETS = [];
 
 function comboMultiplier(combo) {
   return 1 + Math.min(3, Math.floor(Math.max(0, combo - 1) / 4) * 0.5);
@@ -106,6 +107,8 @@ export class GameScene {
     this.targets = [];
     this.indicatorTargets = [];
     this.hud = {};
+    this.envState = { inflammation: 0, netBurden: 0, erosion: 0, threat: 0 };
+    this.overlayState = { targets: NO_TARGETS, lockTarget: null, showLock: false, cartilage: null };
     this.state = "menu";
     this.lockTarget = null;
     this.aimMode = "auto";
@@ -322,6 +325,7 @@ export class GameScene {
     this.health = RULES.maxHealth;
     this.inflammation = RULES.startInflammation;
     this.netBurden = 0;
+    this.netMaxed = false;
     this.wave = 1;
     this.cleared = 0;
     this.elapsed = 0;
@@ -340,6 +344,7 @@ export class GameScene {
     this.lastDamageTime = -10;
     this.lockTarget = null;
     this.pendingTap = null;
+    this.pendingPress = false;
     this.shake = 0;
     this.endInfo = null;
   }
@@ -508,12 +513,12 @@ export class GameScene {
   }
 
   environmentState() {
-    return {
-      inflammation: this.inflammation,
-      netBurden: this.netBurden,
-      erosion: this.erosion,
-      threat: this.threat,
-    };
+    const state = this.envState;
+    state.inflammation = this.inflammation;
+    state.netBurden = this.netBurden;
+    state.erosion = this.erosion;
+    state.threat = this.threat;
+    return state;
   }
 
   updateMenu(dt) {
@@ -539,7 +544,12 @@ export class GameScene {
     this.updateCamera(dt);
     this.updateLights();
     this.ui.update(dt, this.collectHud());
-    this.ui.updateWorldOverlays(dt, this.camera, { targets: [], lockTarget: null, showLock: false, cartilage: null });
+    const overlay = this.overlayState;
+    overlay.targets = NO_TARGETS;
+    overlay.lockTarget = null;
+    overlay.showLock = false;
+    overlay.cartilage = null;
+    this.ui.updateWorldOverlays(dt, this.camera, overlay);
   }
 
   updateDying(dt) {
@@ -608,12 +618,12 @@ export class GameScene {
     for (const target of this.targets) if (target.active) list.push(target);
     list.sort((a, b) => Math.hypot(a.position.x, a.position.z) - Math.hypot(b.position.x, b.position.z));
     if (list.length > 9) list.length = 9;
-    this.ui.updateWorldOverlays(dt, this.camera, {
-      targets: list,
-      lockTarget: this.lockTarget,
-      showLock: this.aimMode === "auto" && Boolean(this.lockTarget),
-      cartilage: CARTILAGE_POINT,
-    });
+    const overlay = this.overlayState;
+    overlay.targets = list;
+    overlay.lockTarget = this.lockTarget;
+    overlay.showLock = this.aimMode === "auto" && Boolean(this.lockTarget);
+    overlay.cartilage = CARTILAGE_POINT;
+    this.ui.updateWorldOverlays(dt, this.camera, overlay);
   }
 
   // ---------------------------------------------------------------------
@@ -701,7 +711,17 @@ export class GameScene {
       }
       if (this.pendingTap.age > 0.3) this.pendingTap = null;
     }
-    if (this.input.firing && this.player.canFire()) this.fireNET(aim);
+    // A fresh press always fires (and waits out the cooldown if needed).
+    if (this.input.consumeFirePress()) this.pendingPress = true;
+    if (this.pendingPress && this.player.canFire()) {
+      this.pendingPress = false;
+      this.fireNET(aim);
+      return;
+    }
+    // Holding fire with auto-aim only releases NETs at a locked target, so
+    // holding the button never sprays NETs into empty tissue.
+    const hasAim = this.aimMode !== "auto" || Boolean(this.lockTarget);
+    if (this.input.firing && hasAim && this.player.canFire()) this.fireNET(aim);
   }
 
   /** Taps aim at the nearest target to the finger, else at the tapped spot. */
@@ -746,7 +766,7 @@ export class GameScene {
     this.player.facing.copy(direction);
     this.player.markFired();
     this.shots += 1;
-    this.netBurden = Math.min(RULES.maxNetBurden, this.netBurden + RULES.netShotCost);
+    this.addNetBurden(RULES.netShotCost);
     this.particles.burst(origin, { count: 6, color: 0xbffcff, speed: 3, size: 0.4, life: 0.3, gravity: 0 });
     this.audio.fire();
     return true;
@@ -768,7 +788,7 @@ export class GameScene {
       return;
     }
     this.burstCharge = 0;
-    this.netBurden = Math.min(RULES.maxNetBurden, this.netBurden + RULES.burstCost);
+    this.addNetBurden(RULES.burstCost);
     const p = this.player.position;
     for (let i = 0; i < RULES.burstProjectiles; i += 1) {
       const a = (i / RULES.burstProjectiles) * Math.PI * 2;
@@ -880,13 +900,13 @@ export class GameScene {
     if (method === "net") {
       if (target.kind === "platelet") {
         // NET–platelet microthrombi are thrombo-inflammatory: extra burden.
-        this.netBurden = Math.min(RULES.maxNetBurden, this.netBurden + 2);
+        this.addNetBurden(2);
       } else if (target.kind === "debris") {
         // NET–debris complexes expose more citrullinated autoantigen.
-        this.netBurden = Math.min(RULES.maxNetBurden, this.netBurden + 1);
+        this.addNetBurden(1);
       } else if (target.kind === "synoviocyte") {
         // FLS internalise NET components and present citrullinated peptides.
-        this.netBurden = Math.min(RULES.maxNetBurden, this.netBurden + 1.5);
+        this.addNetBurden(1.5);
       } else {
         this.netBurden = Math.max(0, this.netBurden - RULES.netHitRelief);
       }
@@ -1024,6 +1044,17 @@ export class GameScene {
     list.length = write;
   }
 
+  /**
+   * Raise NET burden. Hitting the cap latches the loss: the per-frame decay
+   * runs before the end-of-run check, so a value clamped to exactly 100 would
+   * otherwise always read as 99.9 and the "NET burden too high" ending could
+   * never trigger.
+   */
+  addNetBurden(amount) {
+    this.netBurden = Math.min(RULES.maxNetBurden, this.netBurden + amount);
+    if (this.netBurden >= RULES.maxNetBurden) this.netMaxed = true;
+  }
+
   updateBiology(dt) {
     this.inflammation = Math.min(RULES.maxInflammation, this.inflammation + (0.9 + this.wave * 0.12) * dt);
     this.netBurden = Math.max(0, this.netBurden - RULES.netDecayPerSecond * dt);
@@ -1073,7 +1104,7 @@ export class GameScene {
       this.audio.burst();
     } else if (this.inflammation >= RULES.maxInflammation) {
       this.finish(false, "Inflammation runaway", "The RA synovial microenvironment exceeded control thresholds.");
-    } else if (this.netBurden >= RULES.maxNetBurden) {
+    } else if (this.netMaxed || this.netBurden >= RULES.maxNetBurden) {
       this.finish(false, "NET burden too high", "Excess chromatin webbing increased tissue damage and autoimmunity risk.");
     }
   }

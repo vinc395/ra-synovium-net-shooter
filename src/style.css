@@ -302,6 +302,11 @@ body.in-game .hud {
   width: 290px;
   padding: 12px 14px;
   display: none;
+  pointer-events: none;
+}
+
+.legend .legend-close,
+body.device-touch .legend {
   pointer-events: auto;
 }
 
@@ -625,6 +630,11 @@ body.device-touch.playing .touch-ui {
 
 .touch-btn.dash.cooling {
   opacity: 0.45;
+}
+
+body.net-overload .touch-btn.fire {
+  border-color: rgba(255, 90, 120, 0.95);
+  box-shadow: 0 0 26px rgba(255, 60, 100, 0.55), 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 .touch-btn.burst {

@@ -4,6 +4,7 @@ import { getSynovialSurfaceHeight } from "./terrain.js";
 
 const FLIGHT_HEIGHT = 1.95;
 const trailVelocity = new THREE.Vector3();
+const TRAIL = { color: 0x8ef5ff, size: 0.55, life: 0.32, drag: 4 };
 
 /**
  * A single NET: an expanding, spinning web of chromatin with a bright core.
@@ -107,12 +108,7 @@ class NETProjectile {
     this.trailTimer -= dt;
     if (particles && this.trailTimer <= 0) {
       this.trailTimer = 0.028;
-      particles.emit(p, trailVelocity.copy(this.velocity).multiplyScalar(-0.08), {
-        color: 0x8ef5ff,
-        size: 0.55,
-        life: 0.32,
-        drag: 4,
-      });
+      particles.emit(p, trailVelocity.copy(this.velocity).multiplyScalar(-0.08), TRAIL);
     }
 
     if (this.age >= this.life || Math.hypot(p.x, p.z) > 40) this.deactivate();

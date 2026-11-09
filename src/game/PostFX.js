@@ -22,6 +22,7 @@ export class PostFX {
     const wantsComposer = Boolean(bloom);
     if (!wantsComposer) {
       this.enabled = false;
+      this.disposeComposer();
       return;
     }
     if (this.composer && this.samples === msaa) {
@@ -72,10 +73,12 @@ export class PostFX {
   disposeComposer() {
     if (!this.composer) return;
     this.bloomPass.dispose();
-    this.outputPass.dispose?.();
-    this.composer.renderTarget1.dispose();
-    this.composer.renderTarget2.dispose();
+    this.outputPass.dispose();
+    this.renderPass.dispose();
+    // Disposes both render targets and the internal copy pass.
+    this.composer.dispose();
     this.composer = null;
+    this.samples = -1;
     this.bloomPass = null;
     this.outputPass = null;
     this.renderPass = null;

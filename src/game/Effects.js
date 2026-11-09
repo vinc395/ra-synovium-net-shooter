@@ -4,6 +4,8 @@ import { getSurfaceNormal, getSynovialSurfaceHeight } from "./terrain.js";
 const UP = new THREE.Vector3(0, 1, 0);
 const tmpColor = new THREE.Color();
 const tmpNormal = new THREE.Vector3();
+const burstVelocity = new THREE.Vector3();
+const FORWARD = new THREE.Vector3(0, 0, 1);
 
 /**
  * Pooled additive particle system (one draw call for every spark, trail and
@@ -107,7 +109,7 @@ export class ParticleSystem {
   }
 
   burst(position, { count = 20, color = 0xffffff, speed = 6, size = 0.45, life = 0.7, spread = 1, upward = 0.4, drag = 3, gravity = -2 } = {}) {
-    const velocity = new THREE.Vector3();
+    const velocity = burstVelocity;
     for (let i = 0; i < count; i += 1) {
       velocity
         .set(Math.random() * 2 - 1, (Math.random() * 2 - 1) * spread + upward, Math.random() * 2 - 1)
@@ -210,7 +212,7 @@ export class RingPool {
     const y = getSynovialSurfaceHeight(position.x, position.z) + 0.12;
     item.mesh.position.set(position.x, y, position.z);
     getSurfaceNormal(position.x, position.z, tmpNormal);
-    item.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tmpNormal);
+    item.mesh.quaternion.setFromUnitVectors(FORWARD, tmpNormal);
     item.mesh.scale.setScalar(from);
   }
 
@@ -271,7 +273,7 @@ export class NetResidue {
     const y = getSynovialSurfaceHeight(position.x, position.z) + 0.08;
     mesh.position.set(position.x, y, position.z);
     getSurfaceNormal(position.x, position.z, tmpNormal);
-    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tmpNormal);
+    mesh.quaternion.setFromUnitVectors(FORWARD, tmpNormal);
     mesh.rotateZ(Math.random() * Math.PI * 2);
     mesh.scale.setScalar(size * (0.8 + Math.random() * 0.5));
     mesh.visible = true;

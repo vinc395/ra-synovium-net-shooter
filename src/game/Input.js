@@ -25,6 +25,16 @@ const ACTION_KEYS = {
   Enter: "confirm",
 };
 
+const PAD_EDGE_ACTIONS = [
+  [0, "confirm"],
+  [1, "dash"],
+  [4, "dash"],
+  [3, "burst"],
+  [5, "burst"],
+  [9, "pause"],
+  [8, "pause"],
+];
+
 const JOYSTICK_RADIUS = 58;
 const STICK_DEADZONE = 0.18;
 const PAD_IDLE_SECONDS = 4;
@@ -71,6 +81,13 @@ export class Input {
       vector: new THREE.Vector2(),
     };
     this.firePointer = null;
+    // True while a Space press that began in the game is held: if focus moves
+    // to a menu button mid-press (e.g. the game-over screen appears), the
+    // release must not click that button.
+    this.spaceFromGame = false;
+    // Set on a fresh fire press (not while held): always fires one NET.
+    this.firePressed = false;
+    this.lastDevice = this.device;
 
     this.bindKeyboard();
     this.bindPointer();
@@ -92,8 +109,15 @@ export class Input {
   }
 
   setPointerKind(kind) {
-    if (this.pointerKind === kind) return;
     this.pointerKind = kind;
+    this.notifyDevice();
+  }
+
+  /** Tell the UI when the active device (touch / desktop / gamepad) changes. */
+  notifyDevice() {
+    const device = this.device;
+    if (device === this.lastDevice) return;
+    this.lastDevice = device;
     this.onDeviceChange?.();
   }
 
@@ -106,19 +130,31 @@ export class Input {
         return;
       }
       if (event.code === "Space") {
-        if (inControl) return;
+        if (inControl) {
+          if (event.repeat || this.spaceFromGame) event.preventDefault();
+          return;
+        }
         event.preventDefault();
+        if (!event.repeat) {
+          this.spaceFromGame = true;
+          this.firePressed = true;
+        }
         this.keyFiring = true;
         return;
       }
       const action = ACTION_KEYS[event.code];
       if (!action || event.repeat) return;
-      if (inControl && (action === "confirm" || action === "restart")) return;
+      // Enter on a focused button already clicks it natively.
+      if (inControl && action === "confirm") return;
       this.onAction(action, event);
     });
     window.addEventListener("keyup", (event) => {
       this.keys.delete(event.code);
-      if (event.code === "Space") this.keyFiring = false;
+      if (event.code === "Space") {
+        if (this.spaceFromGame && isFormControl(event.target)) event.preventDefault();
+        this.spaceFromGame = false;
+        this.keyFiring = false;
+      }
     });
   }
 
@@ -127,6 +163,7 @@ export class Input {
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
 
     canvas.addEventListener("pointerdown", (event) => {
+      this.padLastUsed = -Infinity;
       if (event.pointerType === "touch") {
         event.preventDefault();
         this.setPointerKind("touch");
@@ -142,6 +179,7 @@ export class Input {
       this.updatePointer(event);
       if (event.button === 0) {
         this.mouseFiring = true;
+        this.firePressed = true;
         capturePointer(canvas, event.pointerId);
       } else if (event.button === 2) {
         this.onAction("burst", event);
@@ -196,6 +234,7 @@ export class Input {
       (event) => {
         this.firePointer = event.pointerId;
         this.touchFiring = true;
+        this.firePressed = true;
       },
       (event) => {
         if (event.pointerId === this.firePointer) {
@@ -258,6 +297,8 @@ export class Input {
 
   releaseAll() {
     this.keys.clear();
+    this.spaceFromGame = false;
+    this.firePressed = false;
     this.mouseFiring = false;
     this.keyFiring = false;
     this.touchFiring = false;
@@ -280,6 +321,7 @@ export class Input {
       this.padMove.set(0, 0);
       this.padAim.set(0, 0);
       this.padFiring = false;
+      this.notifyDevice();
       return;
     }
     const axis = (index) => {
@@ -287,27 +329,23 @@ export class Input {
       return Math.abs(value) < STICK_DEADZONE ? 0 : value;
     };
     this.padMove.set(axis(0), axis(1));
-    this.padAim.set(axis(2), axis(3));
+    // On non-standard mappings axes 2/3 are often analogue triggers resting
+    // at -1, which would read as a permanently pushed right stick.
+    if (pad.mapping === "standard") this.padAim.set(axis(2), axis(3));
+    else this.padAim.set(0, 0);
     if (this.padMove.lengthSq() > 1) this.padMove.normalize();
     const pressed = (index) => Boolean(pad.buttons[index] && pad.buttons[index].pressed);
     const anyButton = pad.buttons.some((button) => button && button.pressed);
     if (anyButton || this.padMove.lengthSq() > 0 || this.padAim.lengthSq() > 0) {
-      const wasActive = this.padActive;
       this.padLastUsed = performance.now() / 1000;
-      if (!wasActive) this.onDeviceChange?.();
     }
+    this.notifyDevice();
     // Twin-stick: pushing the right stick aims and fires.
-    this.padFiring = pressed(7) || pressed(6) || this.padAim.length() > 0.55;
-    const edges = [
-      [0, "confirm"],
-      [1, "dash"],
-      [4, "dash"],
-      [3, "burst"],
-      [5, "burst"],
-      [9, "pause"],
-      [8, "pause"],
-    ];
-    for (const [index, action] of edges) {
+    const trigger = pressed(7) || pressed(6);
+    if (trigger && !this.padTrigger) this.firePressed = true;
+    this.padTrigger = trigger;
+    this.padFiring = trigger || this.padAim.length() > 0.55;
+    for (const [index, action] of PAD_EDGE_ACTIONS) {
       const now = pressed(index);
       if (now && !this.padPrevious[index]) this.onAction(action, null);
       this.padPrevious[index] = now;
@@ -332,6 +370,12 @@ export class Input {
 
   get firing() {
     return this.mouseFiring || this.keyFiring || this.touchFiring || this.padFiring;
+  }
+
+  consumeFirePress() {
+    const pressed = this.firePressed;
+    this.firePressed = false;
+    return pressed;
   }
 
   consumeTaps() {

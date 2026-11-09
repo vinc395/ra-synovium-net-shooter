@@ -31,6 +31,16 @@ const LEGEND_NAMES = {
 const hex = (value) => `#${value.toString(16).padStart(6, "0")}`;
 const projected = new THREE.Vector3();
 const cameraSpace = new THREE.Vector3();
+const screenPoint = { x: 0, y: 0, visible: false };
+
+// Bit flag, CSS class, text. At most two are shown at once.
+const WARNINGS = [
+  [16, "net", "NET burden critical — stop firing!"],
+  [1, "net", "NET overload — webbing is damaging tissue"],
+  [2, "inflammation", "Inflammation critical"],
+  [4, "cartilage", "Cartilage under attack"],
+  [8, "health", "Neutrophil exhausted"],
+];
 
 function legendItems() {
   return Object.entries(TARGET_KINDS)
@@ -114,14 +124,20 @@ export class UI {
       this.indicatorPool.push(node);
     }
 
-    this.el.legendButton.addEventListener("click", () => this.toggleLegend());
+    const hudButton = (button, action) =>
+      button.addEventListener("click", () => {
+        button.blur();
+        action();
+      });
+    hudButton(this.el.legendButton, () => this.toggleLegend());
+    hudButton(this.el.muteButton, () => handlers.onToggleSound());
+    hudButton(this.el.pauseButton, () => handlers.onPause());
     this.el.legend.addEventListener("click", (event) => {
       if (event.target.closest(".legend-close") || document.body.classList.contains("device-touch")) {
+        if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
         this.toggleLegend(false);
       }
     });
-    this.el.muteButton.addEventListener("click", () => handlers.onToggleSound());
-    this.el.pauseButton.addEventListener("click", () => handlers.onPause());
     this.el.card.addEventListener("click", (event) => {
       const button = event.target.closest("[data-action]");
       if (!button) return;
@@ -182,7 +198,10 @@ export class UI {
     this.setText(el.waveLabel, `Wave ${hud.wave}`, "wave");
     this.setText(el.clearedValue, `Cleared ${hud.cleared}/${RULES.winClears}`, "cleared");
     this.setText(el.timeValue, formatTime(hud.remainingSeconds), "time");
-    this.setText(el.scoreValue, hud.score.toLocaleString(), "score");
+    if (this.cache.score !== hud.score) {
+      this.cache.score = hud.score;
+      el.scoreValue.textContent = hud.score.toLocaleString();
+    }
     const comboText = hud.multiplier > 1 ? `×${hud.multiplier.toFixed(1)} combo ${hud.combo}` : "";
     this.setText(el.comboValue, comboText, "combo");
 
@@ -201,18 +220,23 @@ export class UI {
       el.dashButton.classList.toggle("cooling", !dashReady);
     }
 
-    const warnings = [];
-    if (hud.netBurden > RULES.netOverloadThreshold) warnings.push(["net", "NET overload — webbing is damaging tissue"]);
-    if (hud.inflammation > 82) warnings.push(["inflammation", "Inflammation critical"]);
-    if (hud.threat > 0.55) warnings.push(["cartilage", "Cartilage under attack"]);
-    if (hud.health < 25) warnings.push(["health", "Neutrophil exhausted"]);
-    const key = warnings.map(([k]) => k).join("|");
-    if (this.cache.warnings !== key) {
-      this.cache.warnings = key;
-      el.warnings.innerHTML = warnings
-        .slice(0, 2)
-        .map(([k, text]) => `<span class="warning ${k}">${text}</span>`)
-        .join("");
+    let mask = 0;
+    if (hud.netBurden > 88) mask |= 16;
+    else if (hud.netBurden > RULES.netOverloadThreshold) mask |= 1;
+    if (hud.inflammation > 82) mask |= 2;
+    if (hud.threat > 0.55) mask |= 4;
+    if (hud.health < 25) mask |= 8;
+    if (this.cache.warnings !== mask) {
+      this.cache.warnings = mask;
+      document.body.classList.toggle("net-overload", (mask & 17) !== 0);
+      let html = "";
+      let shown = 0;
+      for (const [bit, cls, text] of WARNINGS) {
+        if (!(mask & bit) || shown >= 2) continue;
+        html += `<span class="warning ${cls}">${text}</span>`;
+        shown += 1;
+      }
+      el.warnings.innerHTML = html;
     }
 
     if (this.bannerTimer > 0) {
@@ -266,7 +290,7 @@ export class UI {
   }
 
   updateWorldOverlays(dt, camera, { targets, lockTarget, showLock, cartilage }) {
-    const screen = { x: 0, y: 0, visible: false };
+    const screen = screenPoint;
     for (const item of this.floaterPool) {
       if (!item.active) continue;
       item.age += dt;
@@ -294,37 +318,39 @@ export class UI {
 
     // Off-screen threat arrows (closest to the cartilage first) plus one for
     // the cartilage itself.
-    const { width, height } = this.viewport;
-    let used = 0;
-    const place = (position, color, isCartilage) => {
-      if (used >= this.indicatorPool.length) return;
-      cameraSpace.copy(position).applyMatrix4(camera.matrixWorldInverse);
-      projected.copy(position).project(camera);
-      let x = projected.x;
-      let y = projected.y;
-      if (cameraSpace.z > 0) {
-        x = -x;
-        y = -y;
-      }
-      const margin = 0.9;
-      if (cameraSpace.z < 0 && Math.abs(x) <= 1 && Math.abs(y) <= 1) return;
-      const scale = 1 / Math.max(Math.abs(x) / margin, Math.abs(y) / (margin - 0.04), 1e-6);
-      const ex = x * scale;
-      const ey = y * scale;
-      const px = (ex * 0.5 + 0.5) * width;
-      const py = (-ey * 0.5 + 0.5) * height;
-      const angle = Math.atan2(-ey, ex);
-      const node = this.indicatorPool[used];
-      used += 1;
-      node.className = `indicator show${isCartilage ? " cartilage" : ""}`;
-      node.style.setProperty("--c", color);
-      node.style.transform = `translate3d(${px}px, ${py}px, 0) translate(-50%, -50%) rotate(${angle}rad)`;
-    };
-    if (cartilage) place(cartilage, "#dff3ff", true);
-    for (const target of targets) place(target.position, hex(target.def.glow), false);
-    for (let i = used; i < this.indicatorPool.length; i += 1) {
+    this.indicatorsUsed = 0;
+    if (cartilage) this.placeIndicator(camera, cartilage, "#dff3ff", true);
+    for (const target of targets) this.placeIndicator(camera, target.position, hex(target.def.glow), false);
+    for (let i = this.indicatorsUsed; i < this.indicatorPool.length; i += 1) {
       if (this.indicatorPool[i].className !== "indicator") this.indicatorPool[i].className = "indicator";
     }
+  }
+
+  /** Edge-of-screen arrow pointing at an off-screen world position. */
+  placeIndicator(camera, position, color, isCartilage) {
+    if (this.indicatorsUsed >= this.indicatorPool.length) return;
+    const { width, height } = this.viewport;
+    cameraSpace.copy(position).applyMatrix4(camera.matrixWorldInverse);
+    projected.copy(position).project(camera);
+    let x = projected.x;
+    let y = projected.y;
+    if (cameraSpace.z > 0) {
+      x = -x;
+      y = -y;
+    }
+    const margin = 0.9;
+    if (cameraSpace.z < 0 && Math.abs(x) <= 1 && Math.abs(y) <= 1) return;
+    const scale = 1 / Math.max(Math.abs(x) / margin, Math.abs(y) / (margin - 0.04), 1e-6);
+    const ex = x * scale;
+    const ey = y * scale;
+    const px = (ex * 0.5 + 0.5) * width;
+    const py = (-ey * 0.5 + 0.5) * height;
+    const angle = Math.atan2(-ey, ex);
+    const node = this.indicatorPool[this.indicatorsUsed];
+    this.indicatorsUsed += 1;
+    node.className = `indicator show${isCartilage ? " cartilage" : ""}`;
+    node.style.setProperty("--c", color);
+    node.style.transform = `translate3d(${px}px, ${py}px, 0) translate(-50%, -50%) rotate(${angle}rad)`;
   }
 
   clearWorldOverlays() {
@@ -336,6 +362,10 @@ export class UI {
     this.el.lockOn.classList.remove("show");
     this.el.banner.classList.remove("show");
     this.bannerTimer = 0;
+    this.el.toast.classList.remove("show");
+    this.toastTimer = 0;
+    this.damage = 0;
+    this.el.damage.style.opacity = "0";
   }
 
   // ----- Menus --------------------------------------------------------------
