@@ -1,134 +1,158 @@
 import * as THREE from "three";
+import { PROJECTILE } from "./config.js";
+import { getSynovialSurfaceHeight } from "./terrain.js";
 
-const DNA_MATERIAL = new THREE.LineBasicMaterial({
-  color: 0xd9f8ff,
-  transparent: true,
-  opacity: 0.82,
-});
+const FLIGHT_HEIGHT = 1.95;
+const trailVelocity = new THREE.Vector3();
 
-const PROTEIN_MATERIAL = new THREE.MeshStandardMaterial({
-  color: 0xfff5c7,
-  emissive: 0x5a4010,
-  roughness: 0.35,
-  flatShading: true,
-});
-
-export class NETProjectile {
-  constructor(position, direction) {
+/**
+ * A single NET: an expanding, spinning web of chromatin with a bright core.
+ * Instances are pooled by NETPool, so firing never allocates.
+ */
+class NETProjectile {
+  constructor(netTexture, coreTexture) {
     this.group = new THREE.Group();
-    this.group.position.copy(position);
-    this.velocity = direction.multiplyScalar(24);
+    this.webMaterial = new THREE.SpriteMaterial({
+      map: netTexture,
+      color: 0xd9fbff,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.web = new THREE.Sprite(this.webMaterial);
+    this.web.renderOrder = 11;
+    this.coreMaterial = new THREE.SpriteMaterial({
+      map: coreTexture,
+      color: 0xbffcff,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.core = new THREE.Sprite(this.coreMaterial);
+    this.core.scale.setScalar(0.9);
+    this.core.renderOrder = 12;
+    this.group.add(this.web, this.core);
+    this.group.visible = false;
+
+    this.velocity = new THREE.Vector3();
+    this.active = false;
     this.age = 0;
-    this.life = 1.8;
-    this.radius = 0.9;
-    this.expired = false;
-    this.wrappedTarget = null;
+    this.life = PROJECTILE.life;
+    this.radius = PROJECTILE.baseRadius;
+    this.spin = 0;
+    this.target = null;
     this.wrapTimer = 0;
-    this.createMesh();
+    this.trailTimer = 0;
   }
 
-  createMesh() {
-    this.webLines = [];
-
-    // The projectile is a loose expanding chromatin mesh, with short lines
-    // standing in for DNA strands and yellow granules for bound proteins.
-    for (let i = 0; i < 9; i += 1) {
-      const geometry = new THREE.BufferGeometry();
-      const angle = (i / 9) * Math.PI * 2;
-      const points = [
-        new THREE.Vector3(0, 0, 0),
-        new THREE.Vector3(Math.cos(angle) * 0.8, Math.sin(i) * 0.35, Math.sin(angle) * 0.8),
-      ];
-      geometry.setFromPoints(points);
-      const line = new THREE.Line(geometry, DNA_MATERIAL.clone());
-      this.webLines.push(line);
-      this.group.add(line);
-    }
-
-    for (let i = 0; i < 5; i += 1) {
-      const protein = new THREE.Mesh(new THREE.TetrahedronGeometry(0.12), PROTEIN_MATERIAL);
-      protein.position.set(
-        THREE.MathUtils.randFloatSpread(0.8),
-        THREE.MathUtils.randFloatSpread(0.55),
-        THREE.MathUtils.randFloatSpread(0.8),
-      );
-      this.group.add(protein);
-    }
-
-    this.core = new THREE.Mesh(
-      new THREE.IcosahedronGeometry(0.16, 1),
-      new THREE.MeshStandardMaterial({
-        color: 0xf8ffff,
-        emissive: 0x7eefff,
-        roughness: 0.2,
-      }),
-    );
-    this.group.add(this.core);
+  launch(position, direction, speed, life) {
+    this.active = true;
+    this.age = 0;
+    this.life = life;
+    this.target = null;
+    this.wrapTimer = 0;
+    this.trailTimer = 0;
+    this.spin = Math.random() * Math.PI * 2;
+    this.group.position.copy(position);
+    this.velocity.copy(direction).setY(0).normalize().multiplyScalar(speed);
+    this.group.visible = true;
+    this.webMaterial.opacity = 1;
+    this.coreMaterial.opacity = 1;
+    this.radius = PROJECTILE.baseRadius;
+    this.updateScale();
   }
 
-  update(dt) {
-    if (this.expired) return;
+  updateScale() {
+    const scale = 1.25 + this.age * 2.2;
+    this.web.scale.setScalar(scale);
+    this.radius = PROJECTILE.baseRadius + this.age * PROJECTILE.radiusGrowth;
+  }
 
+  /** Attach to a target: the web wraps it while it is neutralised. */
+  wrap(target) {
+    this.target = target;
+    this.wrapTimer = 0;
+    this.velocity.set(0, 0, 0);
+  }
+
+  update(dt, particles) {
+    if (!this.active) return;
     this.age += dt;
-    if (this.wrappedTarget) {
+    this.spin += dt * 4;
+    this.webMaterial.rotation = this.spin;
+
+    if (this.target) {
       this.wrapTimer += dt;
-      this.group.position.lerp(this.wrappedTarget.group.position, 0.35);
-      this.group.scale.setScalar(1.25 + Math.sin(this.wrapTimer * 18) * 0.08);
-      this.group.rotation.y += dt * 6;
-      if (this.wrapTimer > 0.45) {
-        this.wrappedTarget.destroyed = true;
-        this.expired = true;
-      }
+      const t = Math.min(1, this.wrapTimer / PROJECTILE.wrapDuration);
+      this.group.position.lerp(this.target.group.position, 1 - Math.exp(-18 * dt));
+      const size = this.target.radius * 3.1 * (1 - t * 0.55) + Math.sin(this.wrapTimer * 22) * 0.12;
+      this.web.scale.setScalar(size);
+      this.webMaterial.rotation = this.spin * 1.8;
+      this.webMaterial.opacity = 1 - t * 0.6;
+      this.coreMaterial.opacity = 1 - t;
+      if (t >= 1) this.deactivate();
       return;
     }
 
     this.group.position.addScaledVector(this.velocity, dt);
-    this.group.rotation.x += dt * 5;
-    this.group.rotation.y += dt * 8;
-    const scale = 0.55 + this.age * 1.2;
-    this.group.scale.setScalar(scale);
-    this.radius = scale * 0.9;
+    // NETs glide just above the folded lining instead of clipping into it.
+    const p = this.group.position;
+    const desiredY = getSynovialSurfaceHeight(p.x, p.z) + FLIGHT_HEIGHT;
+    p.y += (desiredY - p.y) * (1 - Math.exp(-12 * dt));
+    this.updateScale();
+    const fade = this.age / this.life;
+    this.webMaterial.opacity = Math.max(0, 1 - fade * fade);
+    this.coreMaterial.opacity = Math.max(0, 1 - fade);
 
-    for (const line of this.webLines) {
-      line.material.opacity = Math.max(0, 0.85 - this.age * 0.25);
+    this.trailTimer -= dt;
+    if (particles && this.trailTimer <= 0) {
+      this.trailTimer = 0.028;
+      particles.emit(p, trailVelocity.copy(this.velocity).multiplyScalar(-0.08), {
+        color: 0x8ef5ff,
+        size: 0.55,
+        life: 0.32,
+        drag: 4,
+      });
     }
 
-    if (this.age > this.life || this.group.position.length() > 75) {
-      this.expired = true;
+    if (this.age >= this.life || Math.hypot(p.x, p.z) > 40) this.deactivate();
+  }
+
+  deactivate() {
+    this.active = false;
+    this.target = null;
+    this.group.visible = false;
+  }
+}
+
+export class NETPool {
+  constructor(scene, netTexture, coreTexture, capacity = 56) {
+    this.items = [];
+    for (let i = 0; i < capacity; i += 1) {
+      const projectile = new NETProjectile(netTexture, coreTexture);
+      scene.add(projectile.group);
+      this.items.push(projectile);
     }
   }
 
-  wrapTarget(target) {
-    this.wrappedTarget = target;
-    this.velocity.set(0, 0, 0);
-    this.life = this.age + 0.6;
-    target.group.add(this.createWrapCage(target.radius));
-  }
-
-  createWrapCage(radius) {
-    const cage = new THREE.Group();
-    for (let i = 0; i < 8; i += 1) {
-      const curve = new THREE.EllipseCurve(
-        0,
-        0,
-        radius * 1.15,
-        radius * (0.55 + (i % 3) * 0.18),
-        0,
-        Math.PI * 2,
-      );
-      const points = curve.getPoints(36).map((point) => new THREE.Vector3(point.x, point.y, 0));
-      const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), DNA_MATERIAL.clone());
-      line.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
-      cage.add(line);
+  fire(position, direction, { speed = PROJECTILE.speed, life = PROJECTILE.life } = {}) {
+    let projectile = this.items.find((item) => !item.active);
+    if (!projectile) {
+      // Recycle the oldest free-flying NET.
+      projectile = this.items
+        .filter((item) => !item.target)
+        .sort((a, b) => b.age - a.age)[0];
     }
-    return cage;
+    if (!projectile) return null;
+    projectile.launch(position, direction, speed, life);
+    return projectile;
   }
 
-  dispose(scene) {
-    scene.remove(this.group);
-    this.group.traverse((child) => {
-      if (child.geometry) child.geometry.dispose();
-      if (child.material) child.material.dispose();
-    });
+  update(dt, particles) {
+    for (const item of this.items) item.update(dt, particles);
+  }
+
+  clear() {
+    for (const item of this.items) item.deactivate();
   }
 }

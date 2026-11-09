@@ -2,11 +2,13 @@
   "name": "ra-synovium-net-shooter",
   "version": "1.0.0",
   "private": true,
+  "description": "Arcade shooter set in rheumatoid arthritis synovium: steer a neutrophil, trap inflammatory stimuli with NETs and balance inflammation against NET-mediated tissue damage.",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
+    "smoke": "node scripts/smoke-test.mjs",
     "deploy": "npm run build && gh-pages -d dist"
   },
   "dependencies": {
